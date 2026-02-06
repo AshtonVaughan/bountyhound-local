@@ -1,0 +1,78 @@
+# BountyHound Local - Model Configuration
+# GPU: 1x H100 NVL (94GB HBM3)
+
+inference:
+  engine: vllm
+  host: "0.0.0.0"
+  base_port: 8100
+
+models:
+  orchestrator:
+    name: "Qwen/Qwen2.5-72B-Instruct"
+    role: "orchestrator"
+    port: 8100
+    gpu_memory_utilization: 0.42
+    max_model_len: 32768
+    tensor_parallel_size: 1
+    quantization: null
+    description: "Main brain - target selection, planning, decision making"
+
+  discovery:
+    name: "Qwen/Qwen2.5-14B-Instruct"
+    role: "reasoning"
+    port: 8101
+    gpu_memory_utilization: 0.07
+    max_model_len: 16384
+    tensor_parallel_size: 1
+    quantization: null
+    description: "Hypothesis generation, pattern synthesis, anomaly detection"
+
+  auth:
+    name: "Qwen/Qwen2.5-14B-Instruct"
+    role: "reasoning"
+    port: 8101  # shares with discovery
+    gpu_memory_utilization: 0.07
+    max_model_len: 16384
+    tensor_parallel_size: 1
+    quantization: null
+    description: "Account creation, token extraction, auth management"
+
+  exploit:
+    name: "deepseek-ai/deepseek-coder-7b-instruct-v1.5"
+    role: "code"
+    port: 8102
+    gpu_memory_utilization: 0.05
+    max_model_len: 16384
+    tensor_parallel_size: 1
+    quantization: null
+    description: "Exploit crafting, payload generation, code analysis"
+
+  validator:
+    name: "mistralai/Mistral-7B-Instruct-v0.3"
+    role: "validation"
+    port: 8103
+    gpu_memory_utilization: 0.05
+    max_model_len: 8192
+    tensor_parallel_size: 1
+    quantization: null
+    description: "PoC validation, curl-based verification, binary verdicts"
+
+  reporter:
+    name: "deepseek-ai/deepseek-coder-7b-instruct-v1.5"
+    role: "reporting"
+    port: 8102  # shares with exploit
+    gpu_memory_utilization: 0.05
+    max_model_len: 16384
+    tensor_parallel_size: 1
+    quantization: null
+    description: "Report generation, severity calibration, platform formatting"
+
+  fast:
+    name: "microsoft/Phi-3-mini-4k-instruct"
+    role: "utility"
+    port: 8104
+    gpu_memory_utilization: 0.03
+    max_model_len: 4096
+    tensor_parallel_size: 1
+    quantization: null
+    description: "Quick parsing, output formatting, simple classification"

@@ -1,0 +1,25 @@
+# BountyHound Local - Target Configuration
+# Add your targets here. The swarm will cycle through them continuously.
+
+settings:
+  max_concurrent_hunts: 3          # How many targets to hunt simultaneously
+  retest_interval_hours: 12        # Light recon re-test interval
+  full_retest_interval_hours: 168  # Full pipeline re-test (weekly)
+  max_targets: 50
+
+targets: []
+  # Example target entry:
+  # - domain: "example.com"
+  #   platform: "hackerone"           # hackerone, bugcrowd, intigriti, private
+  #   program_url: "https://hackerone.com/example"
+  #   bounty_range: [100, 10000]      # Min/max bounty USD
+  #   scope:
+  #     in_scope:
+  #       - "*.example.com"
+  #       - "api.example.com"
+  #     out_of_scope:
+  #       - "staging.example.com"
+  #       - "docs.example.com"
+  #   priority: 5                     # 1-10, higher = test more often
+  #   credentials_path: ""            # Path to .env file, or empty for unauth
+  #   notes: "GraphQL API at /graphql, React SPA"

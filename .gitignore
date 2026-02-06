@@ -1,0 +1,14 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+logs/
+pids/
+data/bountyhound.db
+data/checkpoints/
+*.egg-info/
+dist/
+build/
+.idea/
+.vscode/
