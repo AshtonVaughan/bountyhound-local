@@ -56,7 +56,7 @@ echo "[3/6] Installing dependencies..."
 # Python deps (skip if already installed)
 if ! python -c "import celery" 2>/dev/null; then
     pip install --no-cache-dir -r requirements.txt -q
-    pip install --no-cache-dir bountyhound huggingface_hub[cli] -q
+    pip install --no-cache-dir bountyhound 'huggingface_hub[cli]' 'ray[default]' -q
     echo "  [+] Python dependencies installed"
 else
     echo "  [+] Python dependencies already present"
@@ -154,6 +154,21 @@ else
 fi
 export BHL_CONFIG_PATH="/workspace/bountyhound-local/$CONFIG"
 
+# Fix CUDA compat library conflict (container lib overrides host driver in child workers)
+# vLLM's multiproc executor spawns child processes that don't inherit LD_PRELOAD,
+# so the compat lib must be disabled entirely for tensor parallel to work.
+COMPAT_DIR="/usr/local/cuda-12.9/compat"
+if [ -d "$COMPAT_DIR" ]; then
+    for compat_lib in "$COMPAT_DIR"/libcuda.so.*; do
+        if [ -f "$compat_lib" ] && [[ ! "$compat_lib" == *.bak ]]; then
+            echo "  [*] Disabling CUDA compat lib: $(basename $compat_lib)"
+            mv "$compat_lib" "${compat_lib}.bak"
+        fi
+    done
+fi
+# Also set LD_PRELOAD for the parent process as fallback
+export LD_PRELOAD="${LD_PRELOAD:+$LD_PRELOAD:}/lib/x86_64-linux-gnu/libcuda.so.1"
+
 # Start vLLM model servers
 echo "  [*] Starting vLLM model servers..."
 bash scripts/start-vllm.sh
@@ -179,7 +194,7 @@ echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║  BOUNTY HOUND LOCAL - RUNNING ON VAST.AI                    ║"
 echo "╠══════════════════════════════════════════════════════════════╣"
-echo "║  GPU: $GPU_NAME (${GPU_MEM_GB}GB)"
+echo "║  GPU: ${GPU_COUNT}x $GPU_NAME (${TOTAL_VRAM_GB}GB total)"
 echo "║  Config: $CONFIG"
 echo "║                                                              ║"
 echo "║  Dashboard:  :8000 (check Vast.ai console for external port) ║"
