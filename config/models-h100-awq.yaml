@@ -1,0 +1,93 @@
+# BountyHound Local - AWQ Quantized Model Configuration
+# GPU: 1x H100 NVL (94GB HBM3) or H100 SXM (80GB)
+# Profile: AWQ 4-bit quantization on smaller models
+# Benefit: Frees ~15GB VRAM for larger orchestrator context + KV cache
+# VRAM: ~65GB / 80-94GB (15-29GB headroom)
+#
+# Use this config if:
+#   - You have 80GB VRAM (H100 SXM/PCIe)
+#   - You want larger context windows
+#   - You want to run more concurrent requests
+
+inference:
+  engine: vllm
+  host: "0.0.0.0"
+  base_port: 8100
+
+models:
+  orchestrator:
+    name: "Qwen/Qwen2.5-72B-Instruct"
+    role: "orchestrator"
+    port: 8100
+    gpu_memory_utilization: 0.50
+    max_model_len: 65536
+    tensor_parallel_size: 1
+    quantization: null
+    dtype: auto
+    description: "Main brain - full precision for best reasoning quality"
+
+  discovery:
+    name: "Qwen/Qwen2.5-14B-Instruct-AWQ"
+    role: "reasoning"
+    port: 8101
+    gpu_memory_utilization: 0.12
+    max_model_len: 32768
+    tensor_parallel_size: 1
+    quantization: awq
+    dtype: auto
+    description: "Hypothesis generation - AWQ 4-bit (14B → ~4GB)"
+
+  auth:
+    name: "Qwen/Qwen2.5-14B-Instruct-AWQ"
+    role: "reasoning"
+    port: 8101  # shares with discovery
+    gpu_memory_utilization: 0.12
+    max_model_len: 32768
+    tensor_parallel_size: 1
+    quantization: awq
+    dtype: auto
+    description: "Account creation - AWQ 4-bit"
+
+  exploit:
+    name: "deepseek-ai/deepseek-coder-7b-instruct-v1.5"
+    role: "code"
+    port: 8102
+    gpu_memory_utilization: 0.08
+    max_model_len: 16384
+    tensor_parallel_size: 1
+    quantization: null
+    dtype: float16
+    description: "Exploit crafting - FP16 (code quality matters)"
+
+  validator:
+    name: "mistralai/Mistral-7B-Instruct-v0.3"
+    role: "validation"
+    port: 8103
+    gpu_memory_utilization: 0.08
+    max_model_len: 8192
+    tensor_parallel_size: 1
+    quantization: null
+    dtype: float16
+    description: "PoC validation - FP16"
+
+  reporter:
+    name: "deepseek-ai/deepseek-coder-7b-instruct-v1.5"
+    role: "reporting"
+    port: 8102  # shares with exploit
+    gpu_memory_utilization: 0.08
+    max_model_len: 16384
+    tensor_parallel_size: 1
+    quantization: null
+    dtype: float16
+    description: "Report generation - FP16"
+
+  fast:
+    name: "microsoft/Phi-3-mini-4k-instruct"
+    role: "utility"
+    port: 8104
+    gpu_memory_utilization: 0.04
+    max_model_len: 4096
+    tensor_parallel_size: 1
+    quantization: null
+    dtype: float16
+    description: "Quick parsing - FP16"

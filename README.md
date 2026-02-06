@@ -8,11 +8,11 @@ Autonomous bug bounty hunting swarm powered by local LLMs on H100 NVL GPU. Runs 
 ┌─────────────────────────────────────────────────────┐
 │                   H100 NVL (94GB)                   │
 │                                                     │
-│  Qwen2.5-72B (orchestrator)           ~40GB         │
-│  Qwen2.5-14B x2 (discovery + auth)   ~12GB         │
-│  DeepSeek-7B x2 (exploit + report)    ~8GB         │
-│  Mistral-7B x2 (validation)           ~8GB         │
-│  Phi-3-mini x2 (utility)              ~4GB         │
+│  Qwen2.5-72B (orchestrator)           ~42GB         │
+│  Qwen2.5-14B (discovery + auth)      ~14GB         │
+│  DeepSeek-7B (exploit + report)       ~9GB         │
+│  Mistral-7B (validation)              ~9GB         │
+│  Phi-3-mini (utility)                 ~6GB         │
 │                                    ────────         │
 │                               Total: ~80GB          │
 └─────────────────────────────────────────────────────┘
@@ -36,13 +36,42 @@ Autonomous bug bounty hunting swarm powered by local LLMs on H100 NVL GPU. Runs 
               └─────────────────────┘
 ```
 
-## Prerequisites
+## Deployment Options
 
-- **GPU**: NVIDIA H100 NVL (94GB) or equivalent
-- **OS**: Linux (Ubuntu 22.04+ recommended)
+### Option A: Vast.ai (Recommended)
+
+Rent an H100 NVL on [Vast.ai](https://vast.ai) for $1.50-4.00/hr. Full setup guide: **[VAST_AI_SETUP.md](VAST_AI_SETUP.md)**
+
+**Quick version:**
+
+1. Search Vast.ai for: `H100 NVL, 1 GPU, >= 200GB disk, >= 64GB RAM`
+2. Select Docker image: `vllm/vllm-openai:latest`
+3. Launch mode: SSH
+4. Expose ports: `8000, 5555`
+5. Paste the on-start script from `scripts/vast-onstart.sh`
+6. SSH in and start hunting:
+
+```bash
+cd /workspace/bountyhound-local
+python cli.py add example.com --priority 8
+python cli.py hunt example.com
+```
+
+### Option B: Bare Metal
+
+Requirements:
+- **GPU**: NVIDIA H100 NVL (94GB) or equivalent with >= 80GB VRAM
+- **OS**: Linux (Ubuntu 22.04+)
 - **Python**: 3.10+
-- **Docker**: For Redis
+- **Docker**: For Redis + Flower
 - **CUDA**: 12.0+
+
+```bash
+git clone https://github.com/AshtonVaughan/bountyhound-local.git
+cd bountyhound-local
+./install.sh
+./scripts/start.sh
+```
 
 ### Required CLI Tools
 
@@ -50,28 +79,12 @@ Autonomous bug bounty hunting swarm powered by local LLMs on H100 NVL GPU. Runs 
 # bountyhound CLI (recon + scanning)
 pip install bountyhound
 
-# Recon tools (used by bountyhound)
+# Recon tools
 go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
 go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
 go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 sudo apt install nmap
 ```
-
-## Installation
-
-```bash
-git clone https://github.com/yourusername/bountyhound-local.git
-cd bountyhound-local
-./install.sh
-```
-
-The installer handles:
-1. Python venv + dependencies
-2. bountyhound CLI + recon tools check
-3. Playwright browser
-4. Redis via Docker
-5. Model downloads (~80GB)
-6. Database initialization
 
 ## Quick Start
 
@@ -80,35 +93,48 @@ The installer handles:
 ./scripts/start.sh
 
 # 2. Add targets
-bhl add example.com --platform hackerone --priority 8
-bhl add target2.com --platform bugcrowd --priority 6
+python cli.py add example.com --platform hackerone --priority 8
+python cli.py add target2.com --platform bugcrowd --priority 6
 
 # 3. Hunt a single target
-bhl hunt example.com
+python cli.py hunt example.com
 
 # 4. Or start the swarm (hunts all targets by priority)
-bhl swarm
+python cli.py swarm
 
 # 5. Monitor
 # Dashboard: http://localhost:8000
 # Flower:    http://localhost:5555
 ```
 
+## Model Configurations
+
+| Config | VRAM | Use Case |
+|--------|------|----------|
+| `config/models.yaml` | ~82GB | Full precision, H100 NVL (94GB) |
+| `config/models-h100-awq.yaml` | ~65GB | AWQ quantized, H100 SXM/PCIe (80GB) |
+
+Switch configs:
+```bash
+export BHL_CONFIG_PATH=./config/models-h100-awq.yaml
+./scripts/start.sh
+```
+
 ## CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `bhl add <domain>` | Add a target (--platform, --priority, --bounty-min/max) |
-| `bhl targets` | List all targets with status |
-| `bhl hunt <domain>` | Start a hunt on one target |
-| `bhl swarm` | Start autonomous swarm across all targets |
-| `bhl recon <domain>` | Run recon only |
-| `bhl status` | Show system status |
-| `bhl creds list` | List saved credentials |
-| `bhl creds show <domain>` | Show credentials (masked) |
-| `bhl creds refresh <domain>` | Refresh expired tokens |
-| `bhl health` | Check all model servers |
-| `bhl load` | Load targets from config/targets.yaml |
+| `python cli.py add <domain>` | Add a target (--platform, --priority, --bounty-min/max) |
+| `python cli.py targets` | List all targets with status |
+| `python cli.py hunt <domain>` | Start a hunt on one target |
+| `python cli.py swarm` | Start autonomous swarm across all targets |
+| `python cli.py recon <domain>` | Run recon only |
+| `python cli.py status` | Show system status |
+| `python cli.py creds list` | List saved credentials |
+| `python cli.py creds show <domain>` | Show credentials (masked) |
+| `python cli.py creds refresh <domain>` | Refresh expired tokens |
+| `python cli.py health` | Check all model servers |
+| `python cli.py load` | Load targets from config/targets.yaml |
 
 ## REST API
 
@@ -163,13 +189,9 @@ targets:
       out_of_scope: ["staging.example.com"]
 ```
 
-### config/models.yaml
-
-Adjust VRAM allocation per model. Default config uses ~80GB of 94GB.
-
 ## Output
 
-Findings saved to `~/bounty-findings/<target>/`:
+Findings saved to `~/bounty-findings/<target>/` (or `/workspace/bounty-findings/` on Vast.ai):
 
 ```
 <target>/
@@ -187,11 +209,14 @@ Findings saved to `~/bounty-findings/<target>/`:
 
 | Script | Description |
 |--------|-------------|
-| `./install.sh` | One-command setup |
+| `./install.sh` | One-command setup (bare metal + Vast.ai) |
 | `./scripts/start.sh` | Start all services |
 | `./scripts/stop.sh` | Graceful shutdown |
-| `./scripts/status.sh` | Health check |
-| `./scripts/download-models.sh` | Download model weights |
+| `./scripts/status.sh` | Health check (GPU, storage, services) |
+| `./scripts/download-models.sh` | Download model weights (~80GB) |
+| `./scripts/vast-onstart.sh` | Vast.ai instance bootstrap |
+| `./scripts/start-vllm.sh` | Start vLLM servers only |
+| `./scripts/start-workers.sh` | Start Celery workers only |
 
 ## Periodic Tasks (Celery Beat)
 
@@ -201,3 +226,15 @@ Findings saved to `~/bounty-findings/<target>/`:
 | Full retest | 7 days | Complete hunt pipeline |
 | Token refresh | 10 minutes | Check/refresh expired creds |
 | Health check | 5 minutes | Monitor all services |
+
+## Vast.ai Cost Optimization
+
+| Strategy | Savings |
+|----------|---------|
+| Use **Interruptible** pricing for overnight swarms | 30-50% cheaper |
+| **Stop** instance when not actively hunting | Pay only for disk |
+| Models cached after first download | Skip 80GB on restart |
+| Queue 10-50 targets, let swarm batch them | Max GPU utilization |
+| Use **Reserved** for week-long campaigns | Cheapest per-hour |
+
+See **[VAST_AI_SETUP.md](VAST_AI_SETUP.md)** for complete Vast.ai deployment guide.

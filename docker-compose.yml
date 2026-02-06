@@ -1,13 +1,19 @@
 version: "3.8"
 
+# BountyHound Local - Docker Compose
+# Usage:
+#   Bare metal:  docker compose up -d redis flower
+#   Full stack:  docker compose --profile full up -d
+
 services:
+  # ── Redis (always needed) ──────────────────────────────────────
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 4gb --maxmemory-policy allkeys-lru
     restart: always
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -15,6 +21,7 @@ services:
       timeout: 5s
       retries: 3
 
+  # ── Flower (Celery monitoring) ─────────────────────────────────
   flower:
     image: mher/flower:2.0
     ports:
@@ -26,5 +33,40 @@ services:
       - redis
     restart: always
 
+  # ── Full Stack (optional, for bare metal with Docker) ──────────
+  bountyhound:
+    profiles: ["full"]
+    build: .
+    ports:
+      - "8000:8000"
+      - "5555:5555"
+      - "8100:8100"
+      - "8101:8101"
+      - "8102:8102"
+      - "8103:8103"
+      - "8104:8104"
+    volumes:
+      - model-cache:/workspace/models
+      - bhl-data:/workspace/data
+      - bhl-findings:/workspace/bounty-findings
+    environment:
+      - HF_HOME=/workspace/models
+      - BHL_DB_PATH=/workspace/data/bountyhound.db
+      - BHL_VAST_AI=1
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      - redis
+    restart: unless-stopped
+
 volumes:
   redis-data:
+  model-cache:
+  bhl-data:
+  bhl-findings:
