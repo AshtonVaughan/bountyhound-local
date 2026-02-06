@@ -1,7 +1,7 @@
 # BountyHound Local - Model Configuration
 # GPU: 1x H100 NVL (94GB HBM3)
-# Profile: Full Precision - Maximum quality
-# VRAM: ~82GB / 94GB (12GB headroom for KV cache + overhead)
+# Profile: Single 72B AWQ - all roles via different system prompts
+# VRAM: ~40GB model + ~50GB KV cache = excellent throughput
 
 inference:
   engine: vllm
@@ -10,78 +10,78 @@ inference:
 
 models:
   orchestrator:
-    name: "Qwen/Qwen2.5-72B-Instruct"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "orchestrator"
     port: 8100
-    gpu_memory_utilization: 0.45
+    gpu_memory_utilization: 0.90
     max_model_len: 32768
     tensor_parallel_size: 1
-    quantization: null
+    quantization: awq
     dtype: auto
     description: "Main brain - target selection, planning, decision making"
 
   discovery:
-    name: "Qwen/Qwen2.5-14B-Instruct"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "reasoning"
-    port: 8101
-    gpu_memory_utilization: 0.15
-    max_model_len: 16384
+    port: 8100
+    gpu_memory_utilization: 0.90
+    max_model_len: 32768
     tensor_parallel_size: 1
-    quantization: null
+    quantization: awq
     dtype: auto
     description: "Hypothesis generation, pattern synthesis, anomaly detection"
 
   auth:
-    name: "Qwen/Qwen2.5-14B-Instruct"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "reasoning"
-    port: 8101  # shares with discovery
-    gpu_memory_utilization: 0.15
-    max_model_len: 16384
+    port: 8100
+    gpu_memory_utilization: 0.90
+    max_model_len: 32768
     tensor_parallel_size: 1
-    quantization: null
+    quantization: awq
     dtype: auto
     description: "Account creation, token extraction, auth management"
 
   exploit:
-    name: "deepseek-ai/deepseek-coder-7b-instruct-v1.5"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "code"
-    port: 8102
-    gpu_memory_utilization: 0.10
-    max_model_len: 16384
+    port: 8100
+    gpu_memory_utilization: 0.90
+    max_model_len: 32768
     tensor_parallel_size: 1
-    quantization: null
+    quantization: awq
     dtype: auto
     description: "Exploit crafting, payload generation, code analysis"
 
   validator:
-    name: "mistralai/Mistral-7B-Instruct-v0.3"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "validation"
-    port: 8103
-    gpu_memory_utilization: 0.10
-    max_model_len: 8192
+    port: 8100
+    gpu_memory_utilization: 0.90
+    max_model_len: 32768
     tensor_parallel_size: 1
-    quantization: null
+    quantization: awq
     dtype: auto
     description: "PoC validation, curl-based verification, binary verdicts"
 
   reporter:
-    name: "deepseek-ai/deepseek-coder-7b-instruct-v1.5"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "reporting"
-    port: 8102  # shares with exploit
-    gpu_memory_utilization: 0.10
-    max_model_len: 16384
+    port: 8100
+    gpu_memory_utilization: 0.90
+    max_model_len: 32768
     tensor_parallel_size: 1
-    quantization: null
+    quantization: awq
     dtype: auto
     description: "Report generation, severity calibration, platform formatting"
 
   fast:
-    name: "microsoft/Phi-3-mini-4k-instruct"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "utility"
-    port: 8104
-    gpu_memory_utilization: 0.06
-    max_model_len: 4096
+    port: 8100
+    gpu_memory_utilization: 0.90
+    max_model_len: 32768
     tensor_parallel_size: 1
-    quantization: null
+    quantization: awq
     dtype: auto
     description: "Quick parsing, output formatting, simple classification"

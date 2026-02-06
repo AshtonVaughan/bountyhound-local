@@ -1,13 +1,12 @@
-# BountyHound Local - AWQ Quantized Model Configuration
-# GPU: 1x H100 NVL (94GB HBM3) or H100 SXM (80GB)
-# Profile: AWQ 4-bit quantization on smaller models
-# Benefit: Frees ~15GB VRAM for larger orchestrator context + KV cache
-# VRAM: ~65GB / 80-94GB (15-29GB headroom)
+# BountyHound Local - Single Model Configuration (Recommended)
+# GPU: 1x H100 NVL (94GB) or H100 SXM/PCIe (80GB)
+# Profile: Single 72B AWQ handles all roles via system prompts
+# VRAM: ~40GB model + ~40-50GB KV cache
+# Benefit: Rock-solid stability, no multi-process memory contention
 #
-# Use this config if:
-#   - You have 80GB VRAM (H100 SXM/PCIe)
-#   - You want larger context windows
-#   - You want to run more concurrent requests
+# All 7 roles use the same model on port 8100.
+# Different system prompts (src/models/prompts/) specialize each role.
+# vLLM batches concurrent requests automatically.
 
 inference:
   engine: vllm
@@ -16,78 +15,78 @@ inference:
 
 models:
   orchestrator:
-    name: "Qwen/Qwen2.5-72B-Instruct"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "orchestrator"
     port: 8100
-    gpu_memory_utilization: 0.50
-    max_model_len: 65536
+    gpu_memory_utilization: 0.90
+    max_model_len: 32768
     tensor_parallel_size: 1
-    quantization: null
+    quantization: awq
     dtype: auto
-    description: "Main brain - full precision for best reasoning quality"
+    description: "Main brain - target selection, planning, decision making"
 
   discovery:
-    name: "Qwen/Qwen2.5-14B-Instruct-AWQ"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "reasoning"
-    port: 8101
-    gpu_memory_utilization: 0.12
+    port: 8100
+    gpu_memory_utilization: 0.90
     max_model_len: 32768
     tensor_parallel_size: 1
     quantization: awq
     dtype: auto
-    description: "Hypothesis generation - AWQ 4-bit (14B → ~4GB)"
+    description: "Hypothesis generation, pattern synthesis, anomaly detection"
 
   auth:
-    name: "Qwen/Qwen2.5-14B-Instruct-AWQ"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "reasoning"
-    port: 8101  # shares with discovery
-    gpu_memory_utilization: 0.12
+    port: 8100
+    gpu_memory_utilization: 0.90
     max_model_len: 32768
     tensor_parallel_size: 1
     quantization: awq
     dtype: auto
-    description: "Account creation - AWQ 4-bit"
+    description: "Account creation, token extraction, auth management"
 
   exploit:
-    name: "deepseek-ai/deepseek-coder-7b-instruct-v1.5"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "code"
-    port: 8102
-    gpu_memory_utilization: 0.08
-    max_model_len: 16384
+    port: 8100
+    gpu_memory_utilization: 0.90
+    max_model_len: 32768
     tensor_parallel_size: 1
-    quantization: null
-    dtype: float16
-    description: "Exploit crafting - FP16 (code quality matters)"
+    quantization: awq
+    dtype: auto
+    description: "Exploit crafting, payload generation, code analysis"
 
   validator:
-    name: "mistralai/Mistral-7B-Instruct-v0.3"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "validation"
-    port: 8103
-    gpu_memory_utilization: 0.08
-    max_model_len: 8192
+    port: 8100
+    gpu_memory_utilization: 0.90
+    max_model_len: 32768
     tensor_parallel_size: 1
-    quantization: null
-    dtype: float16
-    description: "PoC validation - FP16"
+    quantization: awq
+    dtype: auto
+    description: "PoC validation, curl-based verification, binary verdicts"
 
   reporter:
-    name: "deepseek-ai/deepseek-coder-7b-instruct-v1.5"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "reporting"
-    port: 8102  # shares with exploit
-    gpu_memory_utilization: 0.08
-    max_model_len: 16384
+    port: 8100
+    gpu_memory_utilization: 0.90
+    max_model_len: 32768
     tensor_parallel_size: 1
-    quantization: null
-    dtype: float16
-    description: "Report generation - FP16"
+    quantization: awq
+    dtype: auto
+    description: "Report generation, severity calibration, platform formatting"
 
   fast:
-    name: "microsoft/Phi-3-mini-4k-instruct"
+    name: "Qwen/Qwen2.5-72B-Instruct-AWQ"
     role: "utility"
-    port: 8104
-    gpu_memory_utilization: 0.04
-    max_model_len: 4096
+    port: 8100
+    gpu_memory_utilization: 0.90
+    max_model_len: 32768
     tensor_parallel_size: 1
-    quantization: null
-    dtype: float16
-    description: "Quick parsing - FP16"
+    quantization: awq
+    dtype: auto
+    description: "Quick parsing, output formatting, simple classification"

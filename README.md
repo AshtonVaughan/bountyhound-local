@@ -8,19 +8,17 @@ Autonomous bug bounty hunting swarm powered by local LLMs on H100 NVL GPU. Runs 
 ┌─────────────────────────────────────────────────────┐
 │                   H100 NVL (94GB)                   │
 │                                                     │
-│  Qwen2.5-72B (orchestrator)           ~42GB         │
-│  Qwen2.5-14B (discovery + auth)      ~14GB         │
-│  DeepSeek-7B (exploit + report)       ~9GB         │
-│  Mistral-7B (validation)              ~9GB         │
-│  Phi-3-mini (utility)                 ~6GB         │
+│  Qwen2.5-72B-AWQ (all roles)         ~40GB model   │
+│  + KV cache                           ~50GB cache   │
 │                                    ────────         │
-│                               Total: ~80GB          │
+│  Single model, 7 roles via system prompts           │
+│  vLLM batches concurrent requests automatically     │
 └─────────────────────────────────────────────────────┘
          │                    │                │
     ┌────┴────┐         ┌────┴────┐      ┌────┴────┐
     │  vLLM   │         │  Redis  │      │ SQLite  │
-    │ :8100-  │         │ :6379   │      │  (disk) │
-    │  8104   │         │ (tasks) │      │(persist)│
+    │  :8100  │         │ :6379   │      │  (disk) │
+    │         │         │ (tasks) │      │(persist)│
     └────┬────┘         └────┬────┘      └────┬────┘
          │                    │                │
     ┌────┴────────────────────┴────────────────┴────┐
@@ -107,18 +105,15 @@ python cli.py swarm
 # Flower:    http://localhost:5555
 ```
 
-## Model Configurations
+## Model Configuration
+
+Both configs use a single **Qwen2.5-72B-Instruct-AWQ** model (~40GB VRAM) for all roles.
+Different system prompts in `src/models/prompts/` specialize each role (orchestrator, discovery, exploit, etc.).
 
 | Config | VRAM | Use Case |
 |--------|------|----------|
-| `config/models.yaml` | ~82GB | Full precision, H100 NVL (94GB) |
-| `config/models-h100-awq.yaml` | ~65GB | AWQ quantized, H100 SXM/PCIe (80GB) |
-
-Switch configs:
-```bash
-export BHL_CONFIG_PATH=./config/models-h100-awq.yaml
-./scripts/start.sh
-```
+| `config/models.yaml` | ~40GB + KV | Default single-model (recommended) |
+| `config/models-h100-awq.yaml` | ~40GB + KV | Same config (both are single-model now) |
 
 ## CLI Commands
 
@@ -156,7 +151,7 @@ export BHL_CONFIG_PATH=./config/models-h100-awq.yaml
 Phase 1: RECON (bountyhound CLI)           ~5 min
   └─ subfinder → httpx → nmap
 
-Phase 1.5: DISCOVERY (14B reasoning)       ~2 min
+Phase 1.5: DISCOVERY (72B reasoning)       ~2 min
   └─ 4 tracks: Pattern + Anomaly + Code + Transfer
   └─ Output: 5-15 hypothesis cards
 
@@ -213,7 +208,7 @@ Findings saved to `~/bounty-findings/<target>/` (or `/workspace/bounty-findings/
 | `./scripts/start.sh` | Start all services |
 | `./scripts/stop.sh` | Graceful shutdown |
 | `./scripts/status.sh` | Health check (GPU, storage, services) |
-| `./scripts/download-models.sh` | Download model weights (~80GB) |
+| `./scripts/download-models.sh` | Download model weights (~40GB) |
 | `./scripts/vast-onstart.sh` | Vast.ai instance bootstrap |
 | `./scripts/start-vllm.sh` | Start vLLM servers only |
 | `./scripts/start-workers.sh` | Start Celery workers only |
@@ -233,7 +228,7 @@ Findings saved to `~/bounty-findings/<target>/` (or `/workspace/bounty-findings/
 |----------|---------|
 | Use **Interruptible** pricing for overnight swarms | 30-50% cheaper |
 | **Stop** instance when not actively hunting | Pay only for disk |
-| Models cached after first download | Skip 80GB on restart |
+| Models cached after first download | Skip 40GB on restart |
 | Queue 10-50 targets, let swarm batch them | Max GPU utilization |
 | Use **Reserved** for week-long campaigns | Cheapest per-hour |
 
