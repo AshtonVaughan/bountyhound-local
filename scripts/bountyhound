@@ -1,0 +1,345 @@
+#!/usr/bin/env python3
+"""BountyHound CLI - lightweight recon/scan wrapper for subfinder, httpx, nuclei."""
+
+import argparse
+import json
+import os
+import sqlite3
+import subprocess
+import sys
+import time
+from pathlib import Path
+from datetime import datetime
+
+DB_DIR = Path.home() / ".bountyhound"
+DB_PATH = DB_DIR / "bountyhound.db"
+
+
+def init_db():
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("""CREATE TABLE IF NOT EXISTS targets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain TEXT UNIQUE NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS subdomains (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target_id INTEGER NOT NULL,
+        hostname TEXT NOT NULL,
+        ip TEXT,
+        status_code INTEGER,
+        content_length INTEGER,
+        title TEXT,
+        technologies TEXT,
+        web_server TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (target_id) REFERENCES targets(id)
+    )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS findings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subdomain_id INTEGER,
+        type TEXT,
+        severity TEXT,
+        name TEXT,
+        url TEXT,
+        template TEXT,
+        matched_at TEXT,
+        extracted_results TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (subdomain_id) REFERENCES subdomains(id)
+    )""")
+    conn.commit()
+    conn.close()
+
+
+def run_cmd(cmd, timeout=300):
+    """Run a shell command and return stdout, stderr, returncode."""
+    try:
+        result = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True, timeout=timeout
+        )
+        return result.stdout, result.stderr, result.returncode
+    except subprocess.TimeoutExpired:
+        return "", "TIMEOUT", -1
+    except Exception as e:
+        return "", str(e), -1
+
+
+def cmd_target_add(domain):
+    init_db()
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        conn.execute("INSERT OR IGNORE INTO targets (domain) VALUES (?)", (domain,))
+        conn.commit()
+        print(f"[+] Target added: {domain}")
+    finally:
+        conn.close()
+
+
+def cmd_recon(domain, batch=False):
+    """Run recon: subfinder -> httpx -> store results."""
+    init_db()
+    conn = sqlite3.connect(str(DB_PATH))
+
+    # Ensure target exists
+    conn.execute("INSERT OR IGNORE INTO targets (domain) VALUES (?)", (domain,))
+    conn.commit()
+    target_row = conn.execute("SELECT id FROM targets WHERE domain = ?", (domain,)).fetchone()
+    target_id = target_row[0]
+
+    # Clear old subdomains for this target
+    conn.execute("DELETE FROM subdomains WHERE target_id = ?", (target_id,))
+    conn.commit()
+
+    print(f"[*] Phase 1: Subdomain enumeration for {domain}")
+
+    # Step 1: subfinder
+    subdomains = set()
+    subfinder_path = _find_tool("subfinder")
+    if subfinder_path:
+        stdout, stderr, rc = run_cmd(f"{subfinder_path} -d {domain} -silent", timeout=120)
+        if rc == 0:
+            for line in stdout.strip().split("\n"):
+                line = line.strip()
+                if line:
+                    subdomains.add(line)
+            print(f"[+] subfinder: {len(subdomains)} subdomains")
+        else:
+            print(f"[-] subfinder failed: {stderr[:200]}")
+    else:
+        print("[!] subfinder not found, using basic enumeration")
+        subdomains.add(domain)
+        subdomains.add(f"www.{domain}")
+
+    # Always include the base domain
+    subdomains.add(domain)
+
+    # Step 2: httpx probe
+    httpx_path = _find_tool("httpx")
+    if httpx_path and subdomains:
+        sub_list = "\n".join(subdomains)
+        stdout, stderr, rc = run_cmd(
+            f'echo "{sub_list}" | {httpx_path} -silent -json -status-code -content-length -title -tech-detect -web-server',
+            timeout=180
+        )
+        if rc == 0:
+            for line in stdout.strip().split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    hostname = data.get("input", data.get("host", ""))
+                    if not hostname:
+                        # Extract from URL
+                        url = data.get("url", "")
+                        hostname = url.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
+
+                    conn.execute("""INSERT INTO subdomains
+                        (target_id, hostname, ip, status_code, content_length, title, technologies, web_server)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (target_id, hostname,
+                         data.get("host", ""),
+                         data.get("status_code"),
+                         data.get("content_length"),
+                         data.get("title", ""),
+                         json.dumps(data.get("tech", [])),
+                         data.get("webserver", "")))
+                except (json.JSONDecodeError, Exception) as e:
+                    continue
+            conn.commit()
+            count = conn.execute("SELECT COUNT(*) FROM subdomains WHERE target_id = ?", (target_id,)).fetchone()[0]
+            print(f"[+] httpx: {count} live hosts")
+        else:
+            print(f"[-] httpx failed: {stderr[:200]}")
+            # Store raw subdomains without httpx data
+            for sub in subdomains:
+                conn.execute("INSERT INTO subdomains (target_id, hostname) VALUES (?, ?)", (target_id, sub))
+            conn.commit()
+    else:
+        # No httpx, store raw subdomains
+        for sub in subdomains:
+            conn.execute("INSERT INTO subdomains (target_id, hostname) VALUES (?, ?)", (target_id, sub))
+        conn.commit()
+
+    # Step 3: nmap (quick top ports on live hosts)
+    nmap_path = _find_tool("nmap")
+    if nmap_path:
+        live = conn.execute("SELECT hostname FROM subdomains WHERE target_id = ? AND status_code IS NOT NULL", (target_id,)).fetchall()
+        if live:
+            hosts = ",".join(h[0] for h in live[:10])  # Limit to 10 hosts
+            print(f"[*] nmap: scanning top ports on {len(live[:10])} hosts")
+            stdout, stderr, rc = run_cmd(f"{nmap_path} --top-ports 100 -T4 {hosts}", timeout=120)
+            if rc == 0:
+                print(f"[+] nmap: complete")
+
+    total = conn.execute("SELECT COUNT(*) FROM subdomains WHERE target_id = ?", (target_id,)).fetchone()[0]
+    live = conn.execute("SELECT COUNT(*) FROM subdomains WHERE target_id = ? AND status_code IS NOT NULL", (target_id,)).fetchone()[0]
+    print(f"\n[*] Recon complete: {total} subdomains, {live} live")
+    conn.close()
+
+
+def cmd_scan(domain, batch=False):
+    """Run nuclei scan on discovered subdomains."""
+    init_db()
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+
+    target_row = conn.execute("SELECT id FROM targets WHERE domain = ?", (domain,)).fetchone()
+    if not target_row:
+        print(f"[-] Target {domain} not found. Run recon first.")
+        conn.close()
+        sys.exit(1)
+
+    target_id = target_row["id"]
+
+    # Get live subdomains
+    subs = conn.execute(
+        "SELECT id, hostname FROM subdomains WHERE target_id = ?", (target_id,)
+    ).fetchall()
+
+    if not subs:
+        print(f"[-] No subdomains found for {domain}. Run recon first.")
+        conn.close()
+        sys.exit(1)
+
+    # Clear old findings
+    sub_ids = [s["id"] for s in subs]
+    placeholders = ",".join("?" * len(sub_ids))
+    conn.execute(f"DELETE FROM findings WHERE subdomain_id IN ({placeholders})", sub_ids)
+    conn.commit()
+
+    nuclei_path = _find_tool("nuclei")
+    if not nuclei_path:
+        print("[-] nuclei not found. Install with: go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest")
+        conn.close()
+        sys.exit(1)
+
+    # Build URL list
+    urls = []
+    hostname_to_sub_id = {}
+    for s in subs:
+        hostname = s["hostname"]
+        urls.append(f"https://{hostname}")
+        urls.append(f"http://{hostname}")
+        hostname_to_sub_id[hostname] = s["id"]
+
+    url_file = DB_DIR / "scan_urls.txt"
+    url_file.write_text("\n".join(urls))
+
+    print(f"[*] Scanning {len(subs)} hosts with nuclei")
+
+    stdout, stderr, rc = run_cmd(
+        f"{nuclei_path} -l {url_file} -json -severity low,medium,high,critical -silent",
+        timeout=900
+    )
+
+    finding_count = 0
+    if stdout:
+        for line in stdout.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                host = data.get("host", "")
+                # Find matching subdomain
+                clean_host = host.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
+                sub_id = hostname_to_sub_id.get(clean_host)
+
+                if not sub_id:
+                    # Try to find closest match
+                    for h, sid in hostname_to_sub_id.items():
+                        if h in clean_host or clean_host in h:
+                            sub_id = sid
+                            break
+
+                conn.execute("""INSERT INTO findings
+                    (subdomain_id, type, severity, name, url, template, matched_at, extracted_results)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (sub_id,
+                     data.get("type", data.get("info", {}).get("classification", {}).get("cwe-id", ["unknown"])),
+                     data.get("info", {}).get("severity", "info"),
+                     data.get("info", {}).get("name", data.get("template-id", "unknown")),
+                     data.get("matched-at", host),
+                     data.get("template-id", ""),
+                     data.get("matched-at", ""),
+                     json.dumps(data.get("extracted-results", []))))
+                finding_count += 1
+            except (json.JSONDecodeError, Exception):
+                continue
+
+    conn.commit()
+    conn.close()
+    print(f"[+] Scan complete: {finding_count} findings")
+
+
+def cmd_doctor():
+    """Check all required tools."""
+    tools = ["subfinder", "httpx", "nuclei", "nmap", "curl"]
+    for tool in tools:
+        path = _find_tool(tool)
+        status = f"OK ({path})" if path else "NOT FOUND"
+        print(f"  {tool}: {status}")
+
+
+def _find_tool(name):
+    """Find a tool in PATH or common locations."""
+    # Check PATH first
+    for p in os.environ.get("PATH", "").split(os.pathsep):
+        full = os.path.join(p, name)
+        if os.path.isfile(full) and os.access(full, os.X_OK):
+            return full
+    # Check common Go bin locations
+    for extra in [
+        os.path.expanduser("~/go/bin"),
+        "/usr/local/go/bin",
+        "/root/go/bin",
+        "/usr/local/bin",
+    ]:
+        full = os.path.join(extra, name)
+        if os.path.isfile(full) and os.access(full, os.X_OK):
+            return full
+    return None
+
+
+def main():
+    parser = argparse.ArgumentParser(description="BountyHound CLI")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # target add
+    target_parser = subparsers.add_parser("target")
+    target_sub = target_parser.add_subparsers(dest="target_action")
+    add_parser = target_sub.add_parser("add")
+    add_parser.add_argument("domain")
+
+    # recon
+    recon_parser = subparsers.add_parser("recon")
+    recon_parser.add_argument("domain")
+    recon_parser.add_argument("--batch", action="store_true")
+
+    # scan
+    scan_parser = subparsers.add_parser("scan")
+    scan_parser.add_argument("domain")
+    scan_parser.add_argument("--batch", action="store_true")
+
+    # doctor
+    subparsers.add_parser("doctor")
+
+    args = parser.parse_args()
+
+    if args.command == "target" and args.target_action == "add":
+        cmd_target_add(args.domain)
+    elif args.command == "recon":
+        cmd_recon(args.domain, batch=args.batch)
+    elif args.command == "scan":
+        cmd_scan(args.domain, batch=args.batch)
+    elif args.command == "doctor":
+        cmd_doctor()
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

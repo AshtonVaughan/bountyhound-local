@@ -5,15 +5,16 @@ Autonomous bug bounty hunting swarm powered by local LLMs on H100 NVL GPU. Runs 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   H100 NVL (94GB)                   │
-│                                                     │
-│  Qwen2.5-72B-AWQ (all roles)         ~40GB model   │
-│  + KV cache                           ~50GB cache   │
-│                                    ────────         │
-│  Single model, 7 roles via system prompts           │
-│  vLLM batches concurrent requests automatically     │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Single GPU: 1x H100 NVL (94GB)    OR    Dual GPU: 2x H100 │
+│                                                              │
+│  [1 GPU] 72B-AWQ 4-bit  ~40GB      [2 GPU] 72B FP16  TP2   │
+│          + KV cache      ~50GB              ~72GB/GPU        │
+│          ~3 tok/s                           ~15-25 tok/s     │
+│                                                              │
+│  7 roles via system prompts, vLLM auto-batches requests      │
+│  Auto-detects GPU count at startup                           │
+└──────────────────────────────────────────────────────────────┘
          │                    │                │
     ┌────┴────┐         ┌────┴────┐      ┌────┴────┐
     │  vLLM   │         │  Redis  │      │ SQLite  │
@@ -42,7 +43,7 @@ Rent an H100 NVL on [Vast.ai](https://vast.ai) for $1.50-4.00/hr. Full setup gui
 
 **Quick version:**
 
-1. Search Vast.ai for: `H100 NVL, 1 GPU, >= 200GB disk, >= 64GB RAM`
+1. Search Vast.ai for: `H100 NVL, 1-2 GPU, >= 200GB disk, >= 64GB RAM`
 2. Select Docker image: `vllm/vllm-openai:latest`
 3. Launch mode: SSH
 4. Expose ports: `8000, 5555`
@@ -58,7 +59,7 @@ python cli.py hunt example.com
 ### Option B: Bare Metal
 
 Requirements:
-- **GPU**: NVIDIA H100 NVL (94GB) or equivalent with >= 80GB VRAM
+- **GPU**: 1-2x NVIDIA H100 NVL (94GB each) or equivalent with >= 80GB VRAM
 - **OS**: Linux (Ubuntu 22.04+)
 - **Python**: 3.10+
 - **Docker**: For Redis + Flower
@@ -107,13 +108,15 @@ python cli.py swarm
 
 ## Model Configuration
 
-Both configs use a single **Qwen2.5-72B-Instruct-AWQ** model (~40GB VRAM) for all roles.
+All configs use a single **Qwen2.5-72B-Instruct** model for all 7 roles.
 Different system prompts in `src/models/prompts/` specialize each role (orchestrator, discovery, exploit, etc.).
+The system auto-detects GPU count at startup and selects the appropriate config.
 
-| Config | VRAM | Use Case |
-|--------|------|----------|
-| `config/models.yaml` | ~40GB + KV | Default single-model (recommended) |
-| `config/models-h100-awq.yaml` | ~40GB + KV | Same config (both are single-model now) |
+| Config | GPUs | Model | VRAM | Throughput |
+|--------|------|-------|------|-----------|
+| `config/models-dual-gpu.yaml` | 2x H100 | 72B FP16 (TP2) | ~144GB + KV | ~15-25 tok/s |
+| `config/models.yaml` | 1x H100 (90GB+) | 72B AWQ 4-bit | ~40GB + KV | ~3 tok/s |
+| `config/models-h100-awq.yaml` | 1x H100 (<90GB) | 72B AWQ 4-bit | ~40GB + KV | ~3 tok/s |
 
 ## CLI Commands
 
@@ -208,7 +211,7 @@ Findings saved to `~/bounty-findings/<target>/` (or `/workspace/bounty-findings/
 | `./scripts/start.sh` | Start all services |
 | `./scripts/stop.sh` | Graceful shutdown |
 | `./scripts/status.sh` | Health check (GPU, storage, services) |
-| `./scripts/download-models.sh` | Download model weights (~40GB) |
+| `./scripts/download-models.sh` | Download model weights (~40-144GB) |
 | `./scripts/vast-onstart.sh` | Vast.ai instance bootstrap |
 | `./scripts/start-vllm.sh` | Start vLLM servers only |
 | `./scripts/start-workers.sh` | Start Celery workers only |

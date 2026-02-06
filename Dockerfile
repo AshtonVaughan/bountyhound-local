@@ -6,7 +6,7 @@
 FROM vllm/vllm-openai:latest
 
 LABEL maintainer="BountyHound Local"
-LABEL description="Autonomous bug bounty hunting swarm for H100 NVL GPUs"
+LABEL description="Autonomous bug bounty hunting swarm for H100 NVL GPUs (1-2 GPU)"
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
@@ -46,7 +46,7 @@ WORKDIR /workspace/bountyhound-local
 # Copy project files
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir bountyhound huggingface_hub[cli]
+    pip install --no-cache-dir bountyhound huggingface_hub[cli] ray[default]
 
 # Install Playwright chromium
 RUN playwright install chromium --with-deps 2>/dev/null || python -m playwright install chromium
@@ -61,9 +61,10 @@ RUN mkdir -p /workspace/models /workspace/data /workspace/bounty-findings \
 # Environment defaults for Vast.ai
 ENV HF_HOME=/workspace/models
 ENV BHL_DB_PATH=/workspace/data/bountyhound.db
-ENV BHL_CONFIG_PATH=/workspace/bountyhound-local/config/models.yaml
 ENV BHL_VAST_AI=1
 ENV PYTHONPATH=/workspace/bountyhound-local
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
 # Make scripts executable
 RUN chmod +x scripts/*.sh install.sh

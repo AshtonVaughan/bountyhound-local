@@ -16,15 +16,18 @@ if [ "${BHL_VAST_AI:-0}" = "1" ] || [ -f "/etc/vast-ai" ] || [ -d "/workspace" ]
     IS_VAST_AI=true
 fi
 
-# Detect GPU
+# Detect GPU(s)
+GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l || echo "0")
 GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown")
 GPU_MEM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 || echo "0")
 GPU_MEM_GB=$((GPU_MEM_MB / 1024))
+TOTAL_VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | awk '{sum+=$1} END {print sum}' || echo "0")
+TOTAL_VRAM_GB=$((TOTAL_VRAM_MB / 1024))
 
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║               BOUNTY HOUND LOCAL v1.0.0                     ║"
 echo "║          Autonomous Bug Bounty Hunting Swarm                 ║"
-echo "║            $GPU_NAME (${GPU_MEM_GB}GB)"
+echo "║            ${GPU_COUNT}x $GPU_NAME (${TOTAL_VRAM_GB}GB total)"
 if [ "$IS_VAST_AI" = true ]; then
 echo "║                   [Vast.ai Instance]                         ║"
 fi
@@ -57,13 +60,21 @@ echo "  [+] SQLite database ready"
 # ── 3. Start vLLM model servers ───────────────────────────────────
 echo "[3/6] Starting vLLM model servers..."
 
-# Auto-select config based on VRAM
-CONFIG="${BHL_CONFIG_PATH:-$PROJECT_DIR/config/models.yaml}"
-if [ ! -f "$CONFIG" ]; then
+# Auto-select config based on GPU count and VRAM
+if [ -n "$BHL_CONFIG_PATH" ] && [ -f "$BHL_CONFIG_PATH" ]; then
+    CONFIG="$BHL_CONFIG_PATH"
+    echo "  [*] Config (env override): $CONFIG"
+elif [ "$GPU_COUNT" -ge 2 ]; then
+    CONFIG="$PROJECT_DIR/config/models-dual-gpu.yaml"
+    echo "  [*] Dual GPU detected ($GPU_COUNT GPUs) - using FP16 tensor parallel config"
+elif [ "$GPU_MEM_GB" -ge 90 ]; then
     CONFIG="$PROJECT_DIR/config/models.yaml"
+    echo "  [*] Single GPU (${GPU_MEM_GB}GB) - using AWQ config"
+else
+    CONFIG="$PROJECT_DIR/config/models-h100-awq.yaml"
+    echo "  [*] Single GPU (${GPU_MEM_GB}GB) - using AWQ config (conservative)"
 fi
 export BHL_CONFIG_PATH="$CONFIG"
-echo "  [*] Config: $CONFIG"
 
 bash "$SCRIPT_DIR/start-vllm.sh"
 

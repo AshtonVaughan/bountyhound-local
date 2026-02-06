@@ -4,9 +4,11 @@
 # It handles first-time setup AND resume after stop/start.
 set -e
 
+GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l || echo "0")
+GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown")
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║           BOUNTY HOUND LOCAL - VAST.AI BOOTSTRAP             ║"
-echo "║              H100 NVL GPU Instance Setup                      ║"
+echo "║        ${GPU_COUNT}x ${GPU_NAME} Instance Setup"
 echo "╚══════════════════════════════════════════════════════════════╝"
 
 # ── Environment Setup ──────────────────────────────────────────────
@@ -84,13 +86,17 @@ echo "  [+] Recon tools ready"
 # ── 4. Download Models ─────────────────────────────────────────────
 echo "[4/6] Checking model weights..."
 
-MODELS=(
-    "Qwen/Qwen2.5-72B-Instruct"
-    "Qwen/Qwen2.5-14B-Instruct"
-    "deepseek-ai/deepseek-coder-7b-instruct-v1.5"
-    "mistralai/Mistral-7B-Instruct-v0.3"
-    "microsoft/Phi-3-mini-4k-instruct"
-)
+if [ "$GPU_COUNT" -ge 2 ]; then
+    echo "  [*] Dual GPU detected - downloading FP16 model (~144GB)"
+    MODELS=(
+        "Qwen/Qwen2.5-72B-Instruct"
+    )
+else
+    echo "  [*] Single GPU - downloading AWQ model (~39GB)"
+    MODELS=(
+        "Qwen/Qwen2.5-72B-Instruct-AWQ"
+    )
+fi
 
 MODELS_READY=true
 for model in "${MODELS[@]}"; do
@@ -128,21 +134,22 @@ echo "  [+] SQLite database ready at $BHL_DB_PATH"
 echo "[6/6] Starting BountyHound services..."
 mkdir -p logs pids
 
-# Detect GPU and VRAM
-GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown GPU")
+# Detect GPU and VRAM (already have GPU_COUNT from top)
 GPU_MEM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 || echo "0")
 GPU_MEM_GB=$((GPU_MEM_MB / 1024))
-echo "  [*] GPU: $GPU_NAME (${GPU_MEM_GB}GB VRAM)"
+TOTAL_VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | awk '{sum+=$1} END {print sum}' || echo "0")
+TOTAL_VRAM_GB=$((TOTAL_VRAM_MB / 1024))
+echo "  [*] GPU: ${GPU_COUNT}x $GPU_NAME (${TOTAL_VRAM_GB}GB total VRAM)"
 
-# Select model config based on available VRAM
-if [ "$GPU_MEM_GB" -ge 90 ]; then
-    echo "  [*] Using full-precision config (${GPU_MEM_GB}GB >= 90GB)"
+# Select model config based on GPU count and VRAM
+if [ "$GPU_COUNT" -ge 2 ]; then
+    echo "  [*] Dual GPU detected - using FP16 tensor parallel config"
+    CONFIG="config/models-dual-gpu.yaml"
+elif [ "$GPU_MEM_GB" -ge 90 ]; then
+    echo "  [*] Single GPU (${GPU_MEM_GB}GB) - using AWQ config"
     CONFIG="config/models.yaml"
-elif [ "$GPU_MEM_GB" -ge 75 ]; then
-    echo "  [*] Using AWQ quantized config (${GPU_MEM_GB}GB >= 75GB)"
-    CONFIG="config/models-h100-awq.yaml"
 else
-    echo "  [!] WARNING: Only ${GPU_MEM_GB}GB VRAM detected. May not fit all models."
+    echo "  [*] Single GPU (${GPU_MEM_GB}GB) - using AWQ config (conservative)"
     CONFIG="config/models-h100-awq.yaml"
 fi
 export BHL_CONFIG_PATH="/workspace/bountyhound-local/$CONFIG"

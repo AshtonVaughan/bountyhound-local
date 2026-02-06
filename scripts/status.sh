@@ -20,13 +20,11 @@ echo ""
 # GPU Info
 echo "[GPU]"
 if command -v nvidia-smi &> /dev/null; then
-    GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
-    GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader 2>/dev/null | head -1)
-    GPU_USED=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader 2>/dev/null | head -1)
-    GPU_TEMP=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader 2>/dev/null | head -1)
-    echo "  GPU: $GPU_NAME"
-    echo "  VRAM: $GPU_USED / $GPU_MEM"
-    echo "  Temp: ${GPU_TEMP}C"
+    GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l)
+    echo "  GPUs: $GPU_COUNT"
+    nvidia-smi --query-gpu=index,name,memory.used,memory.total,temperature.gpu --format=csv,noheader 2>/dev/null | while IFS=', ' read -r idx name used total temp; do
+        echo "  GPU $idx: $name - $used / $total (${temp}C)"
+    done
 else
     echo "  Status: NO GPU DETECTED"
 fi
@@ -45,25 +43,32 @@ else
     echo "  Status: DOWN"
 fi
 
-# Check vLLM servers
+# Check vLLM servers (check ports with running PIDs)
 echo ""
 echo "[vLLM Model Servers]"
-for port in 8100 8101 8102 8103 8104; do
-    name="unknown"
-    case $port in
-        8100) name="orchestrator (72B)" ;;
-        8101) name="discovery (14B)" ;;
-        8102) name="exploit (7B)" ;;
-        8103) name="validator (7B)" ;;
-        8104) name="utility (3B)" ;;
-    esac
-
-    if curl -s "http://localhost:$port/v1/models" > /dev/null 2>&1; then
-        echo "  :$port $name - HEALTHY"
-    else
-        echo "  :$port $name - DOWN"
+for pidfile in "$PID_DIR"/vllm-*.pid; do
+    if [ -f "$pidfile" ]; then
+        name=$(basename "$pidfile" .pid | sed 's/vllm-//')
+        pid=$(cat "$pidfile")
+        # Extract port from the process command line
+        port=$(ps -p "$pid" -o args= 2>/dev/null | grep -oP '(?<=--port )\d+' || echo "")
+        if [ -n "$port" ] && curl -s "http://localhost:$port/v1/models" > /dev/null 2>&1; then
+            echo "  :$port $name (PID $pid) - HEALTHY"
+        elif kill -0 "$pid" 2>/dev/null; then
+            echo "  :${port:-?} $name (PID $pid) - LOADING"
+        else
+            echo "  :${port:-?} $name (PID $pid) - DOWN"
+        fi
     fi
 done
+# Fallback: check common ports if no PID files found
+if [ ! -f "$PID_DIR"/vllm-*.pid ] 2>/dev/null; then
+    for port in 8100 8101; do
+        if curl -s "http://localhost:$port/v1/models" > /dev/null 2>&1; then
+            echo "  :$port - HEALTHY"
+        fi
+    done
+fi
 
 # Check Celery workers
 echo ""

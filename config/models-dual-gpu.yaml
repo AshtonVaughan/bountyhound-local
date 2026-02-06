@@ -1,0 +1,80 @@
+# BountyHound Local - Dual GPU Model Configuration
+# GPU: 2x H100 NVL (94GB HBM3 each, 188GB total)
+# Profile: Single 72B FP16 - tensor parallel across 2 GPUs
+# VRAM: ~140GB model + ~40GB KV cache = full precision quality
+
+inference:
+  engine: vllm
+  host: "0.0.0.0"
+  base_port: 8100
+
+models:
+  orchestrator:
+    name: "Qwen/Qwen2.5-72B-Instruct"
+    role: "orchestrator"
+    port: 8100
+    gpu_memory_utilization: 0.85
+    max_model_len: 32768
+    tensor_parallel_size: 2
+    dtype: float16
+    description: "Main brain - target selection, planning, decision making"
+
+  discovery:
+    name: "Qwen/Qwen2.5-72B-Instruct"
+    role: "reasoning"
+    port: 8100
+    gpu_memory_utilization: 0.85
+    max_model_len: 32768
+    tensor_parallel_size: 2
+    dtype: float16
+    description: "Hypothesis generation, pattern synthesis, anomaly detection"
+
+  auth:
+    name: "Qwen/Qwen2.5-72B-Instruct"
+    role: "reasoning"
+    port: 8100
+    gpu_memory_utilization: 0.85
+    max_model_len: 32768
+    tensor_parallel_size: 2
+    dtype: float16
+    description: "Account creation, token extraction, auth management"
+
+  exploit:
+    name: "Qwen/Qwen2.5-72B-Instruct"
+    role: "code"
+    port: 8100
+    gpu_memory_utilization: 0.85
+    max_model_len: 32768
+    tensor_parallel_size: 2
+    dtype: float16
+    description: "Exploit crafting, payload generation, code analysis"
+
+  validator:
+    name: "Qwen/Qwen2.5-72B-Instruct"
+    role: "validation"
+    port: 8100
+    gpu_memory_utilization: 0.85
+    max_model_len: 32768
+    tensor_parallel_size: 2
+    dtype: float16
+    description: "PoC validation, curl-based verification, binary verdicts"
+
+  reporter:
+    name: "Qwen/Qwen2.5-72B-Instruct"
+    role: "reporting"
+    port: 8100
+    gpu_memory_utilization: 0.85
+    max_model_len: 32768
+    tensor_parallel_size: 2
+    dtype: float16
+    description: "Report generation, severity calibration, platform formatting"
+
+  fast:
+    name: "Qwen/Qwen2.5-72B-Instruct"
+    role: "utility"
+    port: 8100
+    gpu_memory_utilization: 0.85
+    max_model_len: 32768
+    tensor_parallel_size: 2
+    dtype: float16
+    description: "Quick parsing, output formatting, simple classification"
